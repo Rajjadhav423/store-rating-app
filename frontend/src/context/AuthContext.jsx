@@ -7,7 +7,8 @@ function parseStoredUser() {
   const stored = localStorage.getItem('user');
   if (!stored) return null;
   try {
-    return JSON.parse(stored);
+    const parsed = JSON.parse(stored);
+    return parsed?.role ? parsed : null;
   } catch {
     return null;
   }
@@ -15,7 +16,7 @@ function parseStoredUser() {
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(parseStoredUser());
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [token, setToken] = useState(() => (parseStoredUser() ? localStorage.getItem('token') : null));
 
   const login = useCallback(async (email, password) => {
     const { data } = await api.post('/auth/login', { email, password });

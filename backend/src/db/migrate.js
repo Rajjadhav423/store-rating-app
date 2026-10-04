@@ -1,46 +1,61 @@
+const mysql = require('mysql2/promise');
 const db = require('../config/db');
+const env = require('../config/env');
 
-const sql = `
-CREATE TABLE IF NOT EXISTS users (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR(60) NOT NULL CHECK (char_length(name) BETWEEN 20 AND 60),
-  email VARCHAR(255) NOT NULL UNIQUE,
-  password_hash VARCHAR(255) NOT NULL,
-  address VARCHAR(400) NOT NULL,
-  role VARCHAR(20) NOT NULL CHECK (role IN ('ADMIN', 'USER', 'OWNER')),
-  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
+const statements = [
+  `CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(60) NOT NULL CHECK (char_length(name) BETWEEN 20 AND 60),
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    address VARCHAR(400) NOT NULL,
+    role VARCHAR(20) NOT NULL CHECK (role IN ('ADMIN', 'USER', 'OWNER')),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE TABLE IF NOT EXISTS stores (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(60) NOT NULL CHECK (char_length(name) BETWEEN 20 AND 60),
+    email VARCHAR(255) NOT NULL UNIQUE,
+    address VARCHAR(400) NOT NULL,
+    owner_id INT NOT NULL UNIQUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_stores_name (name),
+    FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE RESTRICT
+  )`,
+  `CREATE TABLE IF NOT EXISTS ratings (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    store_id INT NOT NULL,
+    rating INT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_user_store_rating UNIQUE (user_id, store_id),
+    INDEX idx_ratings_store_id (store_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE
+  )`,
+];
 
-CREATE TABLE IF NOT EXISTS stores (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR(60) NOT NULL CHECK (char_length(name) BETWEEN 20 AND 60),
-  email VARCHAR(255) NOT NULL UNIQUE,
-  address VARCHAR(400) NOT NULL,
-  owner_id INT NOT NULL UNIQUE REFERENCES users(id) ON DELETE RESTRICT,
-  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS ratings (
-  id SERIAL PRIMARY KEY,
-  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  store_id INT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
-  rating INT NOT NULL CHECK (rating BETWEEN 1 AND 5),
-  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  CONSTRAINT unique_user_store_rating UNIQUE (user_id, store_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-CREATE INDEX IF NOT EXISTS idx_stores_name ON stores(name);
-CREATE INDEX IF NOT EXISTS idx_stores_owner_id ON stores(owner_id);
-CREATE INDEX IF NOT EXISTS idx_ratings_store_id ON ratings(store_id);
-CREATE INDEX IF NOT EXISTS idx_ratings_user_id ON ratings(user_id);
-`;
+async function ensureDatabase() {
+  // Create the target database if it doesn't exist yet (needs CREATE privilege).
+  const target = env.databaseUrl ? new URL(env.databaseUrl) : null;
+  const dbName = target ? decodeURIComponent(target.pathname.slice(1)) : env.dbName;
+  const conn = await mysql.createConnection(
+    target
+      ? { host: target.hostname, port: Number(target.port || 3306), user: decodeURIComponent(target.username), password: decodeURIComponent(target.password) }
+      : { host: env.dbHost, port: env.dbPort, user: env.dbUser, password: env.dbPassword }
+  );
+  await conn.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
+  await conn.end();
+}
 
 async function migrate() {
-  await db.query(sql);
+  await ensureDatabase();
+  for (const statement of statements) {
+    await db.query(statement);
+  }
   // eslint-disable-next-line no-console
   console.log('Migration completed');
   await db.pool.end();

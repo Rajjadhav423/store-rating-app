@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const roleLinks = {
@@ -19,9 +19,12 @@ const roleLinks = {
   ],
 };
 
+const roleLabels = { ADMIN: 'Administrator', USER: 'Normal user', OWNER: 'Store owner' };
+
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const role = user?.role;
 
   const onLogout = async () => {
     await logout();
@@ -29,24 +32,36 @@ export default function Layout({ children }) {
   };
 
   return (
-    <div className="container">
-      <header className="header">
-        <h1>Store Rating App</h1>
-        <div>{user ? `Logged in as ${user.role}` : 'Not logged in'}</div>
+    <div className="app">
+      <header className="topbar">
+        <div className="brand">
+          <span className="brand-logo">★</span>
+          <span className="brand-name">Store Rating</span>
+        </div>
+        {role && (
+          <div className="topbar-right">
+            <span className="lozenge">{roleLabels[role] || role}</span>
+            <button type="button" className="btn-subtle" onClick={onLogout}>
+              Log out
+            </button>
+          </div>
+        )}
       </header>
-      {user && (
-        <nav className="nav">
-          {(roleLinks[user.role] || []).map((item) => (
-            <Link key={item.to} to={item.to}>
-              {item.label}
-            </Link>
-          ))}
-          <button type="button" onClick={onLogout}>
-            Logout
-          </button>
-        </nav>
-      )}
-      <main>{children}</main>
+      <div className="body">
+        {role && (
+          <aside className="sidebar">
+            <div className="sidebar-title">Navigation</div>
+            <nav>
+              {(roleLinks[role] || []).map((item) => (
+                <NavLink key={item.to} to={item.to} end className={({ isActive }) => (isActive ? 'active' : '')}>
+                  {item.label}
+                </NavLink>
+              ))}
+            </nav>
+          </aside>
+        )}
+        <main className={role ? 'content' : 'content content-auth'}>{children}</main>
+      </div>
     </div>
   );
 }

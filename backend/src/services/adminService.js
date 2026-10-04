@@ -8,9 +8,9 @@ const STORE_SORT_FIELDS = ['name', 'email', 'address', 'overallRating'];
 
 async function dashboardStats() {
   const [users, stores, ratings] = await Promise.all([
-    db.query('SELECT COUNT(*)::int AS count FROM users'),
-    db.query('SELECT COUNT(*)::int AS count FROM stores'),
-    db.query('SELECT COUNT(*)::int AS count FROM ratings'),
+    db.query('SELECT COUNT(*) AS count FROM users'),
+    db.query('SELECT COUNT(*) AS count FROM stores'),
+    db.query('SELECT COUNT(*) AS count FROM ratings'),
   ]);
 
   return {
@@ -21,18 +21,21 @@ async function dashboardStats() {
 }
 
 async function createUser(payload) {
-  const existing = await db.query('SELECT id FROM users WHERE email = $1', [payload.email]);
+  const existing = await db.query('SELECT id FROM users WHERE email = ?', [payload.email]);
   if (existing.rowCount) throw new AppError(409, 'Email already exists');
 
   const passwordHash = await bcrypt.hash(payload.password, 10);
   const result = await db.query(
     `INSERT INTO users (name, email, password_hash, address, role)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, name, email, address, role, created_at, updated_at`,
+     VALUES (?, ?, ?, ?, ?)`,
     [payload.name, payload.email, passwordHash, payload.address, payload.role]
   );
 
-  return result.rows[0];
+  const created = await db.query(
+    'SELECT id, name, email, address, role, created_at, updated_at FROM users WHERE id = ?',
+    [result.insertId]
+  );
+  return created.rows[0];
 }
 
 async function listUsers(query) {
@@ -45,7 +48,7 @@ async function listUsers(query) {
   ['name', 'email', 'address', 'role'].forEach((field) => {
     if (query[field]) {
       params.push(`%${query[field]}%`);
-      filters.push(`${field} ILIKE $${params.length}`);
+      filters.push(`${field} LIKE ?`);
     }
   });
 
@@ -57,10 +60,10 @@ async function listUsers(query) {
     FROM users
     ${whereClause}
     ORDER BY ${sortBy} ${sortOrder}
-    LIMIT $${params.length - 1} OFFSET $${params.length}
+    LIMIT ? OFFSET ?
   `;
 
-  const countQuery = `SELECT COUNT(*)::int AS total FROM users ${whereClause}`;
+  const countQuery = `SELECT COUNT(*) AS total FROM users ${whereClause}`;
   const countParams = params.slice(0, params.length - 2);
 
   const [dataResult, countResult] = await Promise.all([
@@ -80,7 +83,7 @@ async function listUsers(query) {
 
 async function getUserById(userId) {
   const userResult = await db.query(
-    'SELECT id, name, email, address, role, created_at, updated_at FROM users WHERE id = $1',
+    'SELECT id, name, email, address, role, created_at, updated_at FROM users WHERE id = ?',
     [userId]
   );
   if (!userResult.rowCount) throw new AppError(404, 'User not found');
@@ -90,11 +93,11 @@ async function getUserById(userId) {
 
   const storeResult = await db.query(
     `SELECT s.id, s.name, s.email, s.address,
-            COALESCE(AVG(r.rating), 0)::numeric(10,2) AS average_rating,
-            COUNT(r.id)::int AS total_ratings
+            ROUND(COALESCE(AVG(r.rating), 0), 2) AS average_rating,
+            COUNT(r.id) AS total_ratings
      FROM stores s
      LEFT JOIN ratings r ON r.store_id = s.id
-     WHERE s.owner_id = $1
+     WHERE s.owner_id = ?
      GROUP BY s.id`,
     [userId]
   );
@@ -103,24 +106,27 @@ async function getUserById(userId) {
 }
 
 async function createStore(payload) {
-  const owner = await db.query('SELECT id, role FROM users WHERE id = $1', [payload.ownerId]);
+  const owner = await db.query('SELECT id, role FROM users WHERE id = ?', [payload.ownerId]);
   if (!owner.rowCount || owner.rows[0].role !== 'OWNER') {
     throw new AppError(400, 'ownerId must belong to a store owner');
   }
 
-  const existing = await db.query('SELECT id FROM stores WHERE owner_id = $1', [payload.ownerId]);
+  const existing = await db.query('SELECT id FROM stores WHERE owner_id = ?', [payload.ownerId]);
   if (existing.rowCount > 0) {
     throw new AppError(400, 'Store owner already has a store');
   }
 
   const result = await db.query(
     `INSERT INTO stores (name, email, address, owner_id)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id, name, email, address, owner_id, created_at, updated_at`,
+     VALUES (?, ?, ?, ?)`,
     [payload.name, payload.email, payload.address, payload.ownerId]
   );
 
-  return result.rows[0];
+  const created = await db.query(
+    'SELECT id, name, email, address, owner_id, created_at, updated_at FROM stores WHERE id = ?',
+    [result.insertId]
+  );
+  return created.rows[0];
 }
 
 async function listStores(query) {
@@ -131,8 +137,9 @@ async function listStores(query) {
   const params = [];
 
   if (query.search) {
-    params.push(`%${query.search}%`);
-    filters.push(`(s.name ILIKE $${params.length} OR s.address ILIKE $${params.length} OR s.email ILIKE $${params.length})`);
+    const term = `%${query.search}%`;
+    params.push(term, term, term);
+    filters.push('(s.name LIKE ? OR s.address LIKE ? OR s.email LIKE ?)');
   }
 
   const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
@@ -146,17 +153,17 @@ async function listStores(query) {
 
   const dataQuery = `
     SELECT s.id, s.name, s.email, s.address, s.owner_id,
-           COALESCE(AVG(r.rating), 0)::numeric(10,2) AS overall_rating,
-           COUNT(r.id)::int AS total_ratings
+           ROUND(COALESCE(AVG(r.rating), 0), 2) AS overall_rating,
+           COUNT(r.id) AS total_ratings
     FROM stores s
     LEFT JOIN ratings r ON r.store_id = s.id
     ${whereClause}
     GROUP BY s.id
     ORDER BY ${orderBy}
-    LIMIT $${params.length - 1} OFFSET $${params.length}
+    LIMIT ? OFFSET ?
   `;
 
-  const countQuery = `SELECT COUNT(*)::int AS total FROM stores s ${whereClause}`;
+  const countQuery = `SELECT COUNT(*) AS total FROM stores s ${whereClause}`;
   const countParams = params.slice(0, params.length - 2);
 
   const [dataResult, countResult] = await Promise.all([

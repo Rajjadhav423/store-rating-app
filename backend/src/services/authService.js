@@ -16,7 +16,7 @@ function sanitizeUser(user) {
 }
 
 async function register(payload) {
-  const existing = await db.query('SELECT id FROM users WHERE email = $1', [payload.email]);
+  const existing = await db.query('SELECT id FROM users WHERE email = ?', [payload.email]);
   if (existing.rowCount > 0) {
     throw new AppError(409, 'Email already exists');
   }
@@ -24,19 +24,22 @@ async function register(payload) {
   const passwordHash = await bcrypt.hash(payload.password, 10);
   const result = await db.query(
     `INSERT INTO users (name, email, password_hash, address, role)
-     VALUES ($1, $2, $3, $4, 'USER')
-     RETURNING id, name, email, address, role, created_at, updated_at`,
+     VALUES (?, ?, ?, ?, 'USER')`,
     [payload.name, payload.email, passwordHash, payload.address]
   );
 
-  const user = result.rows[0];
+  const created = await db.query(
+    'SELECT id, name, email, address, role, created_at, updated_at FROM users WHERE id = ?',
+    [result.insertId]
+  );
+  const user = created.rows[0];
   const token = signToken({ id: user.id, role: user.role, email: user.email });
 
   return { user: sanitizeUser(user), token };
 }
 
 async function login(payload) {
-  const result = await db.query('SELECT * FROM users WHERE email = $1', [payload.email]);
+  const result = await db.query('SELECT * FROM users WHERE email = ?', [payload.email]);
   if (result.rowCount === 0) {
     throw new AppError(401, 'Invalid credentials');
   }
@@ -52,7 +55,7 @@ async function login(payload) {
 }
 
 async function changePassword(userId, payload) {
-  const result = await db.query('SELECT id, password_hash FROM users WHERE id = $1', [userId]);
+  const result = await db.query('SELECT id, password_hash FROM users WHERE id = ?', [userId]);
   if (result.rowCount === 0) {
     throw new AppError(404, 'User not found');
   }
@@ -64,7 +67,7 @@ async function changePassword(userId, payload) {
   }
 
   const passwordHash = await bcrypt.hash(payload.newPassword, 10);
-  await db.query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [passwordHash, userId]);
+  await db.query('UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?', [passwordHash, userId]);
 }
 
 module.exports = { register, login, changePassword, sanitizeUser };

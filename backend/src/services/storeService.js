@@ -7,14 +7,14 @@ async function listStoresForUser(query, userId) {
   const { page, limit, offset } = parsePagination(query);
   const { sortBy, sortOrder } = parseSort(query, STORE_SORT_FIELDS, 'name');
 
-  const params = [userId];
+  const params = [userId, userId];
   const filters = [];
   const countParams = [];
   if (query.search) {
     const searchTerm = `%${query.search}%`;
-    params.push(searchTerm);
-    countParams.push(searchTerm);
-    filters.push(`(s.name ILIKE $${params.length} OR s.address ILIKE $${params.length})`);
+    params.push(searchTerm, searchTerm);
+    countParams.push(searchTerm, searchTerm);
+    filters.push('(s.name LIKE ? OR s.address LIKE ?)');
   }
 
   const whereClause = filters.length ? `AND ${filters.join(' AND ')}` : '';
@@ -25,18 +25,18 @@ async function listStoresForUser(query, userId) {
 
   const dataQuery = `
     SELECT s.id, s.name, s.address,
-           COALESCE(AVG(r.rating), 0)::numeric(10,2) AS overall_rating,
-           COALESCE(MAX(CASE WHEN ur.user_id = $1 THEN ur.rating END), 0)::int AS user_rating
+           ROUND(COALESCE(AVG(r.rating), 0), 2) AS overall_rating,
+           COALESCE(MAX(CASE WHEN ur.user_id = ? THEN ur.rating END), 0) AS user_rating
     FROM stores s
     LEFT JOIN ratings r ON r.store_id = s.id
-    LEFT JOIN ratings ur ON ur.store_id = s.id AND ur.user_id = $1
+    LEFT JOIN ratings ur ON ur.store_id = s.id AND ur.user_id = ?
     WHERE 1=1 ${whereClause}
     GROUP BY s.id
     ORDER BY ${orderBy}
-    LIMIT $${params.length - 1} OFFSET $${params.length}
+    LIMIT ? OFFSET ?
   `;
 
-  const countQuery = `SELECT COUNT(*)::int AS total FROM stores s WHERE 1=1 ${whereClause}`;
+  const countQuery = `SELECT COUNT(*) AS total FROM stores s WHERE 1=1 ${whereClause}`;
 
   const [dataResult, countResult] = await Promise.all([
     db.query(dataQuery, params),

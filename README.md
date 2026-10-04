@@ -6,7 +6,7 @@ Full-stack store rating application with role-based access for **System Administ
 
 - Frontend: React + Vite
 - Backend: Express.js
-- Database: PostgreSQL
+- Database: MySQL
 - Auth: JWT
 - Password Hashing: bcrypt
 
@@ -65,7 +65,7 @@ Use `frontend/.env.example`:
 
 ## Database Setup
 
-1. Create PostgreSQL database.
+1. Create MySQL database.
 2. Configure backend env values.
 3. Run migration:
 
