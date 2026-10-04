@@ -1,0 +1,28 @@
+{
+  "name": "store-rating-app",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "npm run test -w backend",
+    "dev": "npm run dev -w backend & npm run dev -w frontend",
+    "dev:backend": "npm run dev -w backend",
+    "dev:frontend": "npm run dev -w frontend",
+    "build": "npm run build -w frontend",
+    "lint": "npm run lint -w frontend",
+    "seed": "npm run seed -w backend",
+    "migrate": "npm run migrate -w backend"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://localhost:26831/Rajjadhav423/store-rating-app"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "private": "true",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ]
+}
