@@ -9,6 +9,7 @@ const storeRoutes = require('./routes/storeRoutes');
 const ratingRoutes = require('./routes/ratingRoutes');
 const ownerRoutes = require('./routes/ownerRoutes');
 const errorHandler = require('./middleware/errorHandler');
+const { apiLimiter } = require('./middleware/rateLimit');
 
 const app = express();
 
@@ -16,6 +17,7 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
+app.use('/api', apiLimiter);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
